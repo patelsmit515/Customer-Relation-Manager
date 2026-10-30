@@ -5,8 +5,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import database
 
-import database
-
 
 def main():
     database.initialize_database()
@@ -18,7 +16,8 @@ def main():
         company="Demo Company",
         email="asha@example.com",
         phone="9876543210",
-        source="Website",
+        whatsapp_number="9876543210",
+        source="WhatsApp",
         status="New",
         notes="Interested in learning about our services.",
     )
@@ -40,7 +39,8 @@ def main():
         company="Demo Company",
         email="asha@example.com",
         phone="9876543210",
-        source="Website",
+        whatsapp_number="9876543210",
+        source="WhatsApp",
         status="Contacted",
         notes="Contacted for an initial discussion.",
     )

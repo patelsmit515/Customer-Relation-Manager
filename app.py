@@ -1,5 +1,6 @@
 
 import streamlit as st
+import pandas as pd
 import database
 
 
@@ -33,32 +34,28 @@ LEAD_SOURCES = [
 ]
 
 
+def clean_str(val):
+    """Safely convert database values (including None and NaN) to strings."""
+    if val is None or pd.isna(val):
+        return ""
+    return str(val)
+
+
 # -----------------------------
-# Helper functions
+# Dashboard
 # -----------------------------
 def show_dashboard():
-    """Display CRM summary metrics."""
     leads = database.get_all_leads()
 
     total_leads = len(leads)
-    new_leads = (
-        int((leads["status"] == "New").sum())
-        if not leads.empty else 0
-    )
-    contacted_leads = (
-        int((leads["status"] == "Contacted").sum())
-        if not leads.empty else 0
-    )
-    won_leads = (
-        int((leads["status"] == "Won").sum())
-        if not leads.empty else 0
-    )
+    new_leads = int((leads["status"] == "New").sum()) if not leads.empty else 0
+    contacted_leads = int((leads["status"] == "Contacted").sum()) if not leads.empty else 0
+    won_leads = int((leads["status"] == "Won").sum()) if not leads.empty else 0
 
     st.title("CRM Dashboard")
     st.write("An overview of your customer and sales leads.")
 
     col1, col2, col3, col4 = st.columns(4)
-
     col1.metric("Total Leads", total_leads)
     col2.metric("New Leads", new_leads)
     col3.metric("Contacted", contacted_leads)
@@ -74,20 +71,24 @@ def show_dashboard():
             "name",
             "company",
             "email",
+            "phone",
+            "whatsapp_number",
             "status",
             "source",
             "created_at",
         ]
 
         st.dataframe(
-            leads[display_columns].head(10),
+            leads[display_columns],
             use_container_width=True,
             hide_index=True,
         )
 
 
+# -----------------------------
+# Add lead
+# -----------------------------
 def add_lead_page():
-    """Display the form for adding a lead."""
     st.title("Add New Lead")
     st.write("Enter the details of a potential customer.")
 
@@ -95,18 +96,22 @@ def add_lead_page():
         name = st.text_input("Full Name *")
         company = st.text_input("Company")
         email = st.text_input("Email Address")
-        phone = st.text_input("Phone Number")
 
         col1, col2 = st.columns(2)
 
         with col1:
-            source = st.selectbox("Lead Source", LEAD_SOURCES)
+            phone = st.text_input("Phone Number (Calls)")
 
         with col2:
-            status = st.selectbox(
-                "Lead Status",
-                LEAD_STATUSES,
-            )
+            whatsapp_number = st.text_input("WhatsApp Number")
+
+        col3, col4 = st.columns(2)
+
+        with col3:
+            source = st.selectbox("Lead Source", LEAD_SOURCES)
+
+        with col4:
+            status = st.selectbox("Lead Status", LEAD_STATUSES)
 
         notes = st.text_area("Notes")
 
@@ -130,6 +135,7 @@ def add_lead_page():
                         company=company,
                         email=email,
                         phone=phone,
+                        whatsapp_number=whatsapp_number,
                         source=source,
                         status=status,
                         notes=notes,
@@ -143,8 +149,10 @@ def add_lead_page():
                     st.error(str(error))
 
 
+# -----------------------------
+# Manage leads
+# -----------------------------
 def manage_leads_page():
-    """Display, search, filter, edit, and delete leads."""
     st.title("Manage Leads")
     st.write("Search and manage your saved leads.")
 
@@ -175,6 +183,7 @@ def manage_leads_page():
         "company",
         "email",
         "phone",
+        "whatsapp_number",
         "source",
         "status",
         "created_at",
@@ -204,29 +213,51 @@ def manage_leads_page():
         leads["id"] == selected_id
     ].iloc[0]
 
+    # Quick action for direct WhatsApp chat
+    wa_num = clean_str(selected_lead.get("whatsapp_number")) or clean_str(selected_lead.get("phone"))
+    clean_digits = "".join(filter(str.isdigit, wa_num))
+    if clean_digits:
+        st.markdown(
+            f'<a href="https://wa.me/{clean_digits}" target="_blank" '
+            f'style="display:inline-block;padding:7px 15px;background-color:#25D366;color:white;border-radius:6px;text-decoration:none;font-weight:600;font-size:14px;margin-bottom:12px;">'
+            f'💬 Open WhatsApp Chat ({wa_num})</a>',
+            unsafe_allow_html=True,
+        )
+
     with st.form("edit_lead_form"):
         edited_name = st.text_input(
             "Full Name *",
-            value=str(selected_lead["name"] or ""),
+            value=clean_str(selected_lead["name"]),
         )
         edited_company = st.text_input(
             "Company",
-            value=str(selected_lead["company"] or ""),
+            value=clean_str(selected_lead["company"]),
         )
         edited_email = st.text_input(
             "Email Address",
-            value=str(selected_lead["email"] or ""),
+            value=clean_str(selected_lead["email"]),
         )
-        edited_phone = st.text_input(
-            "Phone Number",
-            value=str(selected_lead["phone"] or ""),
-        )
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            edited_phone = st.text_input(
+                "Phone Number (Calls)",
+                value=clean_str(selected_lead["phone"]),
+            )
+
+        with col2:
+            edited_whatsapp_number = st.text_input(
+                "WhatsApp Number",
+                value=clean_str(selected_lead.get("whatsapp_number")),
+                help="WhatsApp number with country code",
+            )
 
         current_source = selected_lead["source"]
         source_index = (
             LEAD_SOURCES.index(current_source)
-            if current_source in LEAD_SOURCES else
-            LEAD_SOURCES.index("Other")
+            if current_source in LEAD_SOURCES
+            else LEAD_SOURCES.index("Other")
         )
 
         edited_source = st.selectbox(
@@ -238,7 +269,8 @@ def manage_leads_page():
         current_status = selected_lead["status"]
         status_index = (
             LEAD_STATUSES.index(current_status)
-            if current_status in LEAD_STATUSES else 0
+            if current_status in LEAD_STATUSES
+            else 0
         )
 
         edited_status = st.selectbox(
@@ -249,7 +281,7 @@ def manage_leads_page():
 
         edited_notes = st.text_area(
             "Notes",
-            value=str(selected_lead["notes"] or ""),
+            value=clean_str(selected_lead["notes"]),
         )
 
         update_submitted = st.form_submit_button(
@@ -273,6 +305,7 @@ def manage_leads_page():
                         company=edited_company,
                         email=edited_email,
                         phone=edited_phone,
+                        whatsapp_number=edited_whatsapp_number,
                         source=edited_source,
                         status=edited_status,
                         notes=edited_notes,
@@ -331,9 +364,7 @@ st.sidebar.caption("Built with Python, Streamlit, and SQLite")
 # -----------------------------
 if page == "Dashboard":
     show_dashboard()
-
 elif page == "Add Lead":
     add_lead_page()
-
 elif page == "Manage Leads":
     manage_leads_page()

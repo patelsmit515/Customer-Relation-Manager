@@ -1,5 +1,7 @@
+
 import sqlite3
 from pathlib import Path
+
 import pandas as pd
 
 
@@ -20,7 +22,7 @@ def get_connection():
 
 
 def initialize_database():
-    """Create the leads table if it does not already exist."""
+    """Create the leads table and apply database migrations."""
     with get_connection() as connection:
         connection.execute(
             """
@@ -30,6 +32,7 @@ def initialize_database():
                 company TEXT,
                 email TEXT,
                 phone TEXT,
+                whatsapp_number TEXT,
                 source TEXT,
                 status TEXT NOT NULL DEFAULT 'New',
                 notes TEXT,
@@ -39,12 +42,25 @@ def initialize_database():
             """
         )
 
+        # Upgrade databases created before the WhatsApp field existed.
+        columns = connection.execute(
+            "PRAGMA table_info(leads)"
+        ).fetchall()
+
+        column_names = [column["name"] for column in columns]
+
+        if "whatsapp_number" not in column_names:
+            connection.execute(
+                "ALTER TABLE leads ADD COLUMN whatsapp_number TEXT"
+            )
+
 
 def add_lead(
     name,
     company="",
     email="",
     phone="",
+    whatsapp_number="",
     source="Other",
     status="New",
     notes="",
@@ -58,15 +74,24 @@ def add_lead(
     with get_connection() as connection:
         cursor = connection.execute(
             """
-            INSERT INTO leads
-            (name, company, email, phone, source, status, notes)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO leads (
+                name,
+                company,
+                email,
+                phone,
+                whatsapp_number,
+                source,
+                status,
+                notes
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 name,
                 company.strip(),
                 email.strip(),
                 phone.strip(),
+                whatsapp_number.strip(),
                 source,
                 status,
                 notes.strip(),
@@ -86,7 +111,7 @@ def get_all_leads():
 
 
 def search_leads(search_text="", status="All"):
-    """Search leads by name, company, email, or phone."""
+    """Search leads by name, company, email, or phone number."""
     query = """
         SELECT * FROM leads
         WHERE (
@@ -94,11 +119,12 @@ def search_leads(search_text="", status="All"):
             OR company LIKE ?
             OR email LIKE ?
             OR phone LIKE ?
+            OR whatsapp_number LIKE ?
         )
     """
 
     search_pattern = f"%{search_text.strip()}%"
-    parameters = [search_pattern] * 4
+    parameters = [search_pattern] * 5
 
     if status != "All":
         query += " AND status = ?"
@@ -107,7 +133,11 @@ def search_leads(search_text="", status="All"):
     query += " ORDER BY id DESC"
 
     with get_connection() as connection:
-        return pd.read_sql_query(query, connection, params=parameters)
+        return pd.read_sql_query(
+            query,
+            connection,
+            params=parameters,
+        )
 
 
 def update_lead(
@@ -116,6 +146,7 @@ def update_lead(
     company="",
     email="",
     phone="",
+    whatsapp_number="",
     source="Other",
     status="New",
     notes="",
@@ -134,6 +165,7 @@ def update_lead(
                 company = ?,
                 email = ?,
                 phone = ?,
+                whatsapp_number = ?,
                 source = ?,
                 status = ?,
                 notes = ?,
@@ -145,6 +177,7 @@ def update_lead(
                 company.strip(),
                 email.strip(),
                 phone.strip(),
+                whatsapp_number.strip(),
                 source,
                 status,
                 notes.strip(),
